@@ -12,7 +12,8 @@
 | `serverday4.cpp` | Day 4 | **非阻塞 IO + epoll**（水平触发），为每个连接维护读缓冲区 |
 | `serverday5.cpp` | Day 5 | **epoll + 线程池**（单 Reactor 模型）：主线程只做 IO 与解析，业务交给工作线程 |
 | `serverday6.cpp` | Day 6 | 在 Day5 基础上接入 **MySQL 连接池**与预处理语句（防 SQL 注入） |
-| `date.txt` | — | 学习笔记：HTTP 请求解析与 epoll 流程的伪代码 |
+| `notes/date.txt` | — | 学习笔记：HTTP 请求解析与 epoll 流程的伪代码 |
+| `notes/practice_draft.txt` | — | 学习草稿：早期手写练习与伪代码，**不能编译**（见文件头说明） |
 | `tests/test_client.py` | — | 半包 / 并发测试客户端（见下文） |
 
 ## 架构（Day 5 / Day 6）

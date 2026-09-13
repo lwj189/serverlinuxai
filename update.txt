@@ -1,4 +1,0 @@
-改动 1：上传 Linux Socket HTTP 服务器练习代码
-- server.cpp：HTTP socket 服务器完整版（端口 8888，忽略 SIGPIPE，返回固定网页）
-- practice.cpp：同功能的练习版
-- date.txt：HTTP 请求解析（GET/POST、Content-Length、404）思路伪代码笔记
