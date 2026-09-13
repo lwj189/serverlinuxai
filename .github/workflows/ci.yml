@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: 编译 Day2~Day6 并运行半包测试
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 显示环境信息
+        run: |
+          uname -a
+          g++ --version | head -1
+          python3 --version
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ python3 libmysqlclient-dev
+
+      - name: 编译 Day2 ~ Day5
+        run: |
+          set -e
+          g++ -std=c++17 -Wall serverday2.cpp -o day2
+          g++ -std=c++17 -Wall serverday3.cpp -o day3
+          g++ -std=c++17 -Wall serverday4.cpp -o day4
+          g++ -std=c++17 -Wall -pthread serverday5.cpp -o day5
+          echo "Day2 ~ Day5 编译通过"
+
+      - name: 编译 Day6（MySQL 版本）
+        run: |
+          g++ -std=c++17 -Wall -pthread serverday6.cpp -o day6 -lmysqlclient
+          echo "Day6 编译通过"
+
+      - name: 运行半包 / 并发测试（针对 serverday5）
+        run: |
+          set -e
+          ./day5 &
+          SERVER_PID=$!
+          echo "serverday5 已启动，pid=$SERVER_PID"
+          sleep 2
+
+          # 测试脚本失败时也要先关掉服务器再退出
+          set +e
+          python3 tests/test_client.py
+          RESULT=$?
+          set -e
+
+          kill $SERVER_PID 2>/dev/null || true
+          echo "测试退出码 = $RESULT"
+          exit $RESULT

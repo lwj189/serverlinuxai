@@ -1,5 +1,7 @@
 # serverlinux
 
+[![CI](https://github.com/lwj189/serverlinuxai/actions/workflows/ci.yml/badge.svg)](https://github.com/lwj189/serverlinuxai/actions/workflows/ci.yml)
+
 从零实现的 Linux TCP / HTTP 服务器，按学习阶段拆成多个文件递进。
 纯 C++17，不依赖任何框架，只用 Linux 系统调用与 C++ 标准库。
 
@@ -91,6 +93,15 @@ python3 tests/test_client.py
 覆盖 6 个用例：完整请求基线、头部半包、逐字节发送、body 半包、头部超长保护、20 并发。
 
 > 注意：`serverday5.cpp` 里有一个 `sleep(3s)` 用来模拟耗时业务，测试会比较慢，属正常现象。
+
+### 持续集成（GitHub Actions）
+
+每次 `push` 都会在 Ubuntu 环境下自动执行：
+
+1. 编译 `serverday2.cpp` ~ `serverday6.cpp`（Day6 需链接 MySQL 客户端库）
+2. 启动 `serverday5`，运行 `tests/test_client.py` 的全部 6 个用例
+
+工作流定义见 `.github/workflows/ci.yml`，运行结果见仓库的 **Actions** 页面。
 
 ## 修复记录
 
