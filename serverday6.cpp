@@ -20,6 +20,16 @@
 #include <atomic>
 #include <vector>
 #include <mysql/mysql.h>          // MySQL C API
+
+// 【兼容处理】MySQL 8.0.34 起移除了 my_bool 类型
+//（MySQL 5.7 里 my_bool 是 char，8.0 早期是 bool，8.0.34+ 直接删除）。
+// 下面这个别名让代码在 MySQL 5.7 / 8.0.x 上都能编译。
+#if defined(MYSQL_VERSION_ID) && MYSQL_VERSION_ID >= 80034
+using my_bool_compat = bool;
+#else
+using my_bool_compat = my_bool;
+#endif
+
 using namespace std;
 // ---------- 配置 ----------
 #define PORT 8888
@@ -279,7 +289,7 @@ bool queryUserByName(MYSQL* conn, const string& name, string& result) {
     char name_out[256];
     int age;
     unsigned long id_len, name_len_out, age_len;
-    my_bool is_null[3];
+    my_bool_compat is_null[3];
 
     result_bind[0].buffer_type = MYSQL_TYPE_LONG;
     result_bind[0].buffer = &id;

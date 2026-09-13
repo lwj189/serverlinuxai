@@ -38,8 +38,18 @@ jobs:
 
       - name: 编译 Day6（MySQL 版本）
         run: |
-          g++ -std=c++17 -Wall -pthread serverday6.cpp -o day6 -lmysqlclient
-          echo "Day6 编译通过"
+          if g++ -std=c++17 -Wall -pthread serverday6.cpp -o day6 -lmysqlclient 2> day6_build.log; then
+            echo "Day6 编译通过"
+          else
+            cat day6_build.log
+            # 把每条错误都输出成 GitHub 注解，方便在网页上直接看到原因
+            while IFS= read -r line; do
+              if [ -n "$line" ]; then
+                echo "::error::$line"
+              fi
+            done < day6_build.log
+            exit 1
+          fi
 
       - name: 运行半包 / 并发测试（针对 serverday5）
         run: |
