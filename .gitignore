@@ -1,0 +1,14 @@
+# Windows 系统自动生成
+desktop.ini
+
+# 编译产物
+*.o
+*.out
+*.exe
+day2
+day3
+day4
+day5
+day6
+server
+a.out

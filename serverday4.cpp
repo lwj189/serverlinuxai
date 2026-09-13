@@ -17,6 +17,10 @@
 #define MAX_EVENTS 10
 #define BUFFER_SIZE 4096
 
+// 请求头最大长度：防止客户端一直发数据却始终不出现 "\r\n\r\n"，
+// 导致 read_buffer 无限增长、把内存撑爆（DoS）
+#define MAX_HEADER_SIZE 8192
+
 // =========================== 1. 数据结构（和 Day 3 一样） ===========================
 struct HttpRequest {
     std::string method;
@@ -56,6 +60,8 @@ std::string buildResponse(int statusCode, const std::string& body) {
         case 200: statusLine = "HTTP/1.1 200 OK\r\n"; break;
         case 400: statusLine = "HTTP/1.1 400 Bad Request\r\n"; break;
         case 404: statusLine = "HTTP/1.1 404 Not Found\r\n"; break;
+        case 413: statusLine = "HTTP/1.1 413 Payload Too Large\r\n"; break;
+        case 431: statusLine = "HTTP/1.1 431 Request Header Fields Too Large\r\n"; break;
         default:  statusLine = "HTTP/1.1 500 Internal Server Error\r\n"; break;
     }
     std::string response = statusLine;
@@ -68,6 +74,13 @@ std::string buildResponse(int statusCode, const std::string& body) {
 }
 
 // =========================== 4. Day 4 新增：客户端状态管理 ===========================
+// 【编译修复】handleClientRead() 里要用到 epoll 实例，但它原本定义在 main() 内部，
+// 对这个函数来说是不可见的局部变量，所以编译会报错：
+//     error: 'epoll_fd' was not declared in this scope   （第 88 / 111 / 148 行）
+// 这里把它提升为文件级全局变量，由 main() 赋值。
+// （更规范的做法是封装成 Server 类，用成员变量取代全局变量）
+int g_epoll_fd = -1;
+
 // 每个客户端连接都需要维护一个“读缓冲区”，用来拼凑不完整的TCP包
 struct ClientContext {
     std::string read_buffer;    // 存储所有已读但未处理的原始数据
@@ -85,7 +98,7 @@ void handleClientRead(int fd) {
     
     if (n <= 0) {
         // 客户端断开或出错
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL); // 注意：epoll_fd 需要是全局的
+        epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, NULL);
         close(fd);
         clients.erase(fd);
         return;
@@ -94,6 +107,19 @@ void handleClientRead(int fd) {
     // 1. 把新读到的数据追加到该客户端的缓冲区里
     ClientContext& ctx = clients[fd];
     ctx.read_buffer.append(buffer, n);
+
+    // 【安全加固】请求头长度上限
+    // 如果客户端一直发数据但始终不出现 "\r\n\r\n"，read_buffer 会无限增长 -> 内存耗尽（DoS）。
+    // Day3 的 readUntilDoubleCRLF() 也有同样的隐患，这里补上限制。
+    if (ctx.read_buffer.size() > MAX_HEADER_SIZE &&
+        ctx.read_buffer.find("\r\n\r\n") == std::string::npos) {
+        std::string resp = buildResponse(431, "<h1>431 Request Header Fields Too Large</h1>");
+        send(fd, resp.c_str(), resp.size(), 0);
+        epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+        close(fd);
+        clients.erase(fd);
+        return;
+    }
     
     // 2. 尝试从缓冲区里切出一个完整的 HTTP 请求（处理半包）
     //    如果缓冲区包含 "\r\n\r\n"，说明头部完整了
@@ -108,7 +134,7 @@ void handleClientRead(int fd) {
         // 解析失败，返回 400 并关闭
         std::string resp = buildResponse(400, "<h1>400 Bad Request</h1>");
         send(fd, resp.c_str(), resp.size(), 0);
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+        epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, NULL);
         close(fd);
         clients.erase(fd);
         return;
@@ -118,7 +144,18 @@ void handleClientRead(int fd) {
     size_t contentLen = 0;
     auto it = ctx.req.headers.find("Content-Length");
     if (it != ctx.req.headers.end()) {
-        contentLen = std::stoul(it->second);
+        try {
+            contentLen = std::stoul(it->second);
+        } catch (const std::exception&) {
+            // Content-Length 不是合法数字：Day3 有这层保护，Day4 漏掉了，这里补回来。
+            // 如果不捕获，std::stoul 抛出的异常会直接终止整个服务器进程。
+            std::string resp = buildResponse(400, "<h1>400 Invalid Content-Length</h1>");
+            send(fd, resp.c_str(), resp.size(), 0);
+            epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+            close(fd);
+            clients.erase(fd);
+            return;
+        }
     }
 
     // 计算当前缓冲区里 body 部分的大小
@@ -145,7 +182,7 @@ void handleClientRead(int fd) {
 
     // 7. 发送响应，然后关闭连接（清理资源）
     send(fd, response.c_str(), response.size(), 0);
-    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+    epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, NULL);
     close(fd);
     clients.erase(fd);
 }
@@ -190,6 +227,7 @@ int main() {
         perror("epoll_create1");
         exit(EXIT_FAILURE);
     }
+    g_epoll_fd = epoll_fd;   // 赋值给全局变量，让 handleClientRead() 能访问同一个 epoll 实例
 
     struct epoll_event ev, events[MAX_EVENTS];
     ev.events = EPOLLIN;
